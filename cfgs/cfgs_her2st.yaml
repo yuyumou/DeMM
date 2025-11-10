@@ -33,7 +33,7 @@ HyperParams:
 
 LoraCfgParams:       
   ft_lora: True                   # whether to use lora or not
-  r: 8                            # dimensions of a low-rank matrix
+  r: 8                          # dimensions of a low-rank matrix
   lora_alpha: 16                  # alpha parameter in lora
   target_modules: []              # target modules for lora
   lora_dropout: 0.1               # dropout for lora

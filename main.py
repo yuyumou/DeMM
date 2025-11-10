@@ -11,12 +11,16 @@ from scipy.stats import pearsonr
 import warnings
 warnings.filterwarnings('ignore')
 
+import torch.nn.functional as F
+
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from torch_geometric.loader import NeighborLoader
 import torch_geometric
 torch_geometric.typing.WITH_PYG_LIB = False
+
+
 
 
 cur_main_dir = os.path.dirname(os.path.abspath(__file__)) # current file path to sys.path
@@ -30,6 +34,8 @@ from utils.general_utils import get_parser, set_seed_torch, AverageMeter
 from utils.file_utils import save_hdf5
 from utils.init_utils import _init_optim, _init_loss_function, _init_model
 
+
+from AlignClip import AlignCLIPSemanticLoss
 
 
 @torch.inference_mode()
@@ -112,19 +118,47 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
 
         elif model.__class__.__name__ in ["CUCA", "CUCAMLP"]:
             img_embed, pred_outputs, molecu_embed, rec_outputs = model(x=x, gene_exp=gene_exp_label, gene_embed=None)
-
+            loss_align_fn = AlignCLIPSemanticLoss(alpha=1.0, beta=0.5, temperature=0.07)
             loss_pred = criterions['criterion_main'](pred_outputs, cell_label)
             loss_reconst = criterions['criterion_rec'](rec_outputs, gene_exp_label)
 
             if isinstance(criterions['criterion_align'], torch.nn.KLDivLoss): # KL divergence loss requires log_softmax
                 img_embed = torch.nn.functional.log_softmax(img_embed, dim=1)
                 molecu_embed = torch.nn.functional.log_softmax(molecu_embed, dim=1)
-            loss_align = criterions['criterion_align'](img_embed, molecu_embed)
+            # loss_align = criterions['criterion_align'](img_embed, molecu_embed)
+            ### new Align 
+            loss_align, _ = loss_align_fn(img_embed, molecu_embed)
+
+
 
             # TODO: add cosine similarity loss for alignment
             # loss_align = 1 - torch.nn.functional.cosine_similarity(img_embed, molecu_embed, dim=1).mean()                
             # loss_align = torch.norm(img_embed - molecu_embed, p=2, dim=1)
             cell_loss = criterions['lambda_main']*loss_pred + criterions['lambda_rec']*loss_reconst + criterions['lambda_align']*loss_align
+
+
+        elif model.__class__.__name__ in ["CUCA_DiffReg"]:
+            out = model(x=x, y_target=cell_label) 
+            img_embed = out['proj_embed']
+            direct_pred = out['direct_pred']
+            eps_pred = out['eps_pred']
+            noise = out['noise']
+            y0_pred = out['y0_pred']
+            # y0_pred = F.relu(y0_pred)
+            pred_outputs = y0_pred
+
+            loss_diff = F.mse_loss(eps_pred, noise)
+            loss_direct = criterions['criterion_main'](direct_pred, cell_label)
+            loss_reconst = F.mse_loss(eps_pred, noise)
+            
+            loss_pred = loss_direct
+            loss_align = loss_diff
+
+            cell_loss = (
+                0.5 * loss_diff +
+                0.5 * loss_direct
+            )
+
 
         else:
             raise NotImplementedError
@@ -139,7 +173,7 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
         loss_meter_reconst.update(loss_reconst.item(), center_num)
         loss_meter_alignment.update(loss_align.item(), center_num)
 
-        logging_step = len(train_loader) if model.__class__.__name__ in ["THItoGene", "HisToGene", "Hist2ST"] else 20
+        logging_step = len(train_loader) if model.__class__.__name__ in ["THItoGene", "HisToGene", "Hist2ST"] else 5
         if batch_idx % (len(train_loader)//logging_step) == 0:
             logger.info(f'****Epoch/Iter****[{(epoch+1):03d}/{num_epochs}][{(batch_idx + 1):03d}/{len(train_loader)}]'
                         f'****IterationLoss****{loss_meter.val:.4f}.')
@@ -196,6 +230,10 @@ def test_eval(model, test_loader, criterion=None, device='cuda'):
 
         elif model.__class__.__name__ in ["DenseNet"]:
             pred_outputs = model(x=x)
+        elif model.__class__.__name__ in ["CUCA_DiffReg"]:
+            _, pred_outputs = model(x, sample=True, sample_steps=200)
+            # pred_outputs = F.relu(pred_outputs)
+
 
         else:
             pred_outputs = model(x=x, edge_index=edge_index)
@@ -395,11 +433,11 @@ if __name__ == "__main__":
                     directed=False, input_nodes=None,
                     shuffle=split_type=="train", num_workers=num_workers,                )
 
-            elif config["HyperParams"]["architecture"] in ["FMMLP", "LinearProbing", "MLP", "CUCA", "CUCAMLP", "ST-Net"]:
+            elif config["HyperParams"]["architecture"] in ["FMMLP", "LinearProbing", "MLP", "CUCA", "CUCAMLP", "ST-Net", "CUCA_DiffReg"]:
                 split_dataset = ImgCellGeneDataset(split_file_name=os.path.join(config["CKPTS"]["split_data_root"], f"{split_type}_{spec_name}_{cur_split}.txt"),
                                                    data_root=config["CKPTS"]["data_root"])
                 split_loader = torch.utils.data.DataLoader(split_dataset, shuffle=split_type=="train", 
-                                                           drop_last=config["HyperParams"]["architecture"] in ["FMMLP", "CUCA"], 
+                                                           drop_last=config["HyperParams"]["architecture"] in ["FMMLP", "CUCA", "CUCA_DiffReg"], 
                                                            batch_size=subgraph_bs, num_workers=num_workers)
             
             elif config["HyperParams"]["architecture"] in ["THItoGene", "HisToGene", "Hist2ST"]:

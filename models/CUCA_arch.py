@@ -156,5 +156,83 @@ class CUCA(nn.Module):
             return reg_pred # no embedding or commonly when inference
 
 
+from models.diffusion_regressor import DiffusionRegressor
+
+class CUCA_DiffReg(nn.Module):
+    def __init__(self, backbone, num_targets, hidden_dim, proj_dim, dropout=0.25,
+                 batch_norm=False, aux_output=250, embed_type=None, **lora_cfg):
+        super().__init__()
+        self.embed_type = embed_type
+        weights_path = os.path.join("model_weights_pretrained", backbone)
+        self.backbone = inf_encoder_factory(backbone)(weights_path)
+        backbone_out_embed_dim = self.backbone.out_embed_dim
+
+        self.projector_head = nn.Sequential(
+            nn.Linear(backbone_out_embed_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, proj_dim),
+            nn.LayerNorm(proj_dim),
+        )
+
+        self.direct_regressor = nn.Sequential(
+            nn.Linear(proj_dim, num_targets),
+            nn.Tanh()
+        )
+
+        self.diff_regressor = DiffusionRegressor(
+            target_dim=num_targets, cond_dim=proj_dim,
+            denoiser_hidden=max(512, proj_dim*2), timesteps=200  
+        )
+
+        self.process_backbone(**lora_cfg)
+
+        if self.embed_type == "geneexp":
+            self.snn_branch = SNN(input_dim=aux_output, model_size_omic='big', n_classes=aux_output)
+        elif self.embed_type == "genept":
+            self.snn_branch = SNN(input_dim=1536, model_size_omic='big', n_classes=aux_output)
+
+    def forward(self, x, y_target=None, return_embed=False, sample=False, sample_steps=None,**kwargs):
+        # x: image tensor
+        embedding = self.backbone(x)
+        proj_embed = self.projector_head(embedding)  # (B, proj_dim)
+
+        direct_pred = self.direct_regressor(proj_embed)
+
+        if self.training:
+            assert y_target is not None, "y_target required in training mode"
+            out = self.diff_regressor(y_target, proj_embed)
+            y_t = out['y_t']; t = out['t']; noise = out['noise']; eps_pred = out['eps_pred']
+            y0_pred = self.diff_regressor.predict_x0_from_y_t(y_t, t, proj_embed)
+            return {
+                'proj_embed': proj_embed,
+                'direct_pred': direct_pred,
+                'y_t': y_t,
+                't': t,
+                'noise': noise,
+                'eps_pred': eps_pred,
+                'y0_pred': y0_pred
+            }
+        else:
+            if sample:
+                y_sample = self.diff_regressor.sample_from_condition(proj_embed, num_steps=sample_steps)
+                return proj_embed, y_sample
+            else:
+                return proj_embed, direct_pred
+
+    def process_backbone(self, **lora_cfg_kwargs):
+        if lora_cfg_kwargs['ft_lora']:
+            del lora_cfg_kwargs['ft_lora']
+            for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
+                if isinstance(module, torch.nn.Linear) and name.split('.')[1] in lora_cfg_kwargs['only_spec_blocks']:
+                    lora_cfg_kwargs['target_modules'].append(name)
+            del lora_cfg_kwargs['only_spec_blocks']
+
+            lora_config = LoraConfig(**lora_cfg_kwargs)
+            self.backbone.encoder = get_peft_model(self.backbone.encoder, lora_config) 
+        else: # no lora, fixed
+            for name, param in self.backbone.encoder.named_parameters():
+                param.requires_grad = False
+
 if __name__ == "__main__":
     pass
