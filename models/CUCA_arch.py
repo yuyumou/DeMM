@@ -156,7 +156,8 @@ class CUCA(nn.Module):
             return reg_pred # no embedding or commonly when inference
 
 
-from models.diffusion_regressor import DiffusionRegressor
+from models.diffusion_regressor import ImprovedDiffusionRegressor
+from models.diffusion_regressor_easy import DiffusionRegressor
 
 class CUCA_DiffReg(nn.Module):
     def __init__(self, backbone, num_targets, hidden_dim, proj_dim, dropout=0.25,
@@ -176,13 +177,17 @@ class CUCA_DiffReg(nn.Module):
         )
 
         self.direct_regressor = nn.Sequential(
-            nn.Linear(proj_dim, num_targets),
-            nn.Tanh()
+            nn.Linear(proj_dim, num_targets)
         )
 
-        self.diff_regressor = DiffusionRegressor(
-            target_dim=num_targets, cond_dim=proj_dim,
-            denoiser_hidden=max(512, proj_dim*2), timesteps=200  
+        self.diff_regressor = ImprovedDiffusionRegressor(
+            target_dim=num_targets, 
+            cond_dim=proj_dim,
+            denoiser_hidden=max(512, proj_dim*2), 
+            timesteps=500,  # Increased timesteps for better convergence
+            num_res_blocks=4,
+            dropout=0.1,
+            use_attention=True
         )
 
         self.process_backbone(**lora_cfg)

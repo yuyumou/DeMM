@@ -129,8 +129,6 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
             ### new Align 
             loss_align, _ = loss_align_fn(img_embed, molecu_embed)
 
-
-
             # TODO: add cosine similarity loss for alignment
             # loss_align = 1 - torch.nn.functional.cosine_similarity(img_embed, molecu_embed, dim=1).mean()                
             # loss_align = torch.norm(img_embed - molecu_embed, p=2, dim=1)
@@ -138,27 +136,27 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
 
 
         elif model.__class__.__name__ in ["CUCA_DiffReg"]:
-            out = model(x=x, y_target=cell_label) 
+            out = model(x=x, y_target=cell_label)
             img_embed = out['proj_embed']
             direct_pred = out['direct_pred']
             eps_pred = out['eps_pred']
             noise = out['noise']
             y0_pred = out['y0_pred']
-            # y0_pred = F.relu(y0_pred)
-            pred_outputs = y0_pred
 
-            loss_diff = F.mse_loss(eps_pred, noise)
+            loss_diff = criterions['criterion_main'](eps_pred, noise)
             loss_direct = criterions['criterion_main'](direct_pred, cell_label)
-            loss_reconst = F.mse_loss(eps_pred, noise)
-            
+            loss_reconst = criterions['criterion_main'](y0_pred, cell_label)  
+
             loss_pred = loss_direct
             loss_align = loss_diff
 
-            cell_loss = (
-                0.5 * loss_diff +
-                0.5 * loss_direct
+            cell_loss = (   
+                0.7 * loss_diff +    
+                0.3 * loss_direct 
+                # 0.1 * loss_reconst      
             )
 
+            pred_outputs = direct_pred
 
         else:
             raise NotImplementedError
@@ -231,8 +229,13 @@ def test_eval(model, test_loader, criterion=None, device='cuda'):
         elif model.__class__.__name__ in ["DenseNet"]:
             pred_outputs = model(x=x)
         elif model.__class__.__name__ in ["CUCA_DiffReg"]:
-            _, pred_outputs = model(x, sample=True, sample_steps=200)
-            # pred_outputs = F.relu(pred_outputs)
+            proj_embed, y_diff = model(x, sample=True, sample_steps=200)
+            direct = model.direct_regressor(proj_embed)
+            # alpha = 0.7  
+            # y_final = alpha * y_diff + (1 - alpha) * direct
+            # y_final = torch.clamp(y_final, 0.0, None)
+            # y_final = y_diff
+            pred_outputs = direct
 
 
         else:
