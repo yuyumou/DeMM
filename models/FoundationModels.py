@@ -95,6 +95,23 @@ class PhikonInferenceEncoder(InferenceEncoder):
         return out
     
 
+class PhikonInferenceEncoderV2(InferenceEncoder):
+    def _build(self, weights_path):
+        from transformers import ViTModel
+        
+        model = ViTModel.from_pretrained(weights_path, add_pooling_layer=False)
+        mean, std = get_constants('imagenet')
+        eval_transform = get_eval_transforms(mean, std)
+        precision = torch.float32
+        
+        return model, eval_transform, precision
+    
+    def forward_features(self, x):
+        out = self.encoder(pixel_values=x)
+        out = out.last_hidden_state[:, 0, :]
+    
+        return out
+
 class PlipInferenceEncoder(InferenceEncoder):
     def _build(self, weights_path):
         from transformers import CLIPImageProcessor, CLIPVisionModel
@@ -322,6 +339,8 @@ def inf_encoder_factory(enc_name):
         return UNIInferenceEncoder
     elif enc_name == 'phikon':
         return PhikonInferenceEncoder
+    elif enc_name == 'phikon2':
+        return PhikonInferenceEncoderV2
     elif enc_name == 'plip':
         return PlipInferenceEncoder
     elif enc_name == 'gigapath':

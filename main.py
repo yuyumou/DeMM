@@ -125,9 +125,9 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
             if isinstance(criterions['criterion_align'], torch.nn.KLDivLoss): # KL divergence loss requires log_softmax
                 img_embed = torch.nn.functional.log_softmax(img_embed, dim=1)
                 molecu_embed = torch.nn.functional.log_softmax(molecu_embed, dim=1)
-            # loss_align = criterions['criterion_align'](img_embed, molecu_embed)
+            loss_align = criterions['criterion_align'](img_embed, molecu_embed)
             ### new Align 
-            loss_align, _ = loss_align_fn(img_embed, molecu_embed)
+            # loss_align, _ = loss_align_fn(img_embed, molecu_embed)
 
             # TODO: add cosine similarity loss for alignment
             # loss_align = 1 - torch.nn.functional.cosine_similarity(img_embed, molecu_embed, dim=1).mean()                

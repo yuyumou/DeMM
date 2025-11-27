@@ -1,9 +1,11 @@
 #sleep 2h && echo "ready to run evaluation"
 res_path="results"
-device=0
+device=3
 
 
 all_exp_codes=(
+    "ALignClip_hopstimus_ls2_rk16"
+
 # comparasion methods
 # "CUCA_virchow2_BN_RMSE_a0.2b0.7_ep100_bs128_lr0.002_ext0" # only stnet
 # "CUCA_virchow2_BN_RMSE_a0.3b0.6_ep100_bs128_lr0.002_OneCycleLR"
@@ -57,17 +59,17 @@ all_exp_codes=(
 for i in "${!all_exp_codes[@]}"; do
     exp_code="${all_exp_codes[$i]}"
     
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/humanlung_cell2location/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/humanlung_cell2location/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/humanlung_cell2location/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/humanlung_cell2location/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/humanlung_cell2location/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/humanlung_cell2location/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/humanlung_cell2location/${exp_code}
     CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/her2st/${exp_code}
     CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/her2st/${exp_code}
     CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/her2st/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/her2st/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/stnet/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/stnet/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/stnet/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/stnet/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/stnet/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/stnet/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/stnet/${exp_code}
     echo "done ${exp_code}"
 done
