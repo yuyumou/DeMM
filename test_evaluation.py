@@ -86,10 +86,6 @@ def external_eval(cur_split, test_loader, exp_res_dir=None, device="cuda", **par
         elif param_kwargs['architecture'] in ["ST-Net"]:
             pred_outputs = model(x=x)
 
-        elif model.__class__.__name__ in ["CUCA_DiffReg"]:
-            proj_embed, y_diff = model(x, sample=True, sample_steps=200)
-            direct = model.direct_regressor(proj_embed)
-            pred_outputs = direct    
 
         else:
             proj_embed, pred_outputs = model(x=x, edge_index=edge_index, return_embed=True)
@@ -212,7 +208,7 @@ if __name__ == "__main__":
             test_dataset = THItoGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["data_root"])
             test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False, batch_size=1, num_workers=num_workers)
 
-        elif config["HyperParams"]["architecture"] in ["LinearProbing", "FMMLP", "MLP", "CUCA", "CUCAMLP", "ST-Net", "CUCA_DiffReg"]:
+        elif config["HyperParams"]["architecture"] in ["LinearProbing", "FMMLP", "MLP", "CUCA", "CUCAMLP", "ST-Net", "DeMM"]:
             test_dataset = ImgCellGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["data_root"])      
             test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False, batch_size=subgraph_bs, num_workers=num_workers)
 
@@ -277,7 +273,7 @@ if __name__ == "__main__":
                 split_dataset = THItoGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["independent_root"])
                 split_loader = torch.utils.data.DataLoader(split_dataset, shuffle=False, batch_size=1, num_workers=num_workers)
 
-            elif config["HyperParams"]["architecture"] in ["LinearProbing", "MLP", "CUCAMLP", "FMMLP", "CUCA", "ST-Net", "CUCA_DiffReg"]:
+            elif config["HyperParams"]["architecture"] in ["LinearProbing", "MLP", "CUCAMLP", "FMMLP", "CUCA", "ST-Net", "DeMM"]:
                 test_dataset = ImgCellGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["independent_root"])      
                 test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False, batch_size=subgraph_bs, num_workers=num_workers)
 

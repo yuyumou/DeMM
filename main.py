@@ -126,37 +126,25 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
                 img_embed = torch.nn.functional.log_softmax(img_embed, dim=1)
                 molecu_embed = torch.nn.functional.log_softmax(molecu_embed, dim=1)
             loss_align = criterions['criterion_align'](img_embed, molecu_embed)
-            ### new Align 
-            # loss_align, _ = loss_align_fn(img_embed, molecu_embed)
 
             # TODO: add cosine similarity loss for alignment
             # loss_align = 1 - torch.nn.functional.cosine_similarity(img_embed, molecu_embed, dim=1).mean()                
             # loss_align = torch.norm(img_embed - molecu_embed, p=2, dim=1)
             cell_loss = criterions['lambda_main']*loss_pred + criterions['lambda_rec']*loss_reconst + criterions['lambda_align']*loss_align
 
+        elif model.__class__.__name__ in ["DeMM"]:
+            img_embed, pred_outputs, molecu_embed, rec_outputs = model(x=x, gene_exp=gene_exp_label, gene_embed=None)
+            loss_align_fn = AlignCLIPSemanticLoss(alpha=1.0, beta=0.5, temperature=0.07)
+            loss_pred = criterions['criterion_main'](pred_outputs, cell_label)
+            loss_reconst = criterions['criterion_rec'](rec_outputs, gene_exp_label)
 
-        elif model.__class__.__name__ in ["CUCA_DiffReg"]:
-            out = model(x=x, y_target=cell_label)
-            img_embed = out['proj_embed']
-            direct_pred = out['direct_pred']
-            eps_pred = out['eps_pred']
-            noise = out['noise']
-            y0_pred = out['y0_pred']
+            if isinstance(criterions['criterion_align'], torch.nn.KLDivLoss): # KL divergence loss requires log_softmax
+                img_embed = torch.nn.functional.log_softmax(img_embed, dim=1)
+                molecu_embed = torch.nn.functional.log_softmax(molecu_embed, dim=1)
 
-            loss_diff = criterions['criterion_main'](eps_pred, noise)
-            loss_direct = criterions['criterion_main'](direct_pred, cell_label)
-            loss_reconst = criterions['criterion_main'](y0_pred, cell_label)  
+            loss_align, _ = loss_align_fn(img_embed, molecu_embed)
 
-            loss_pred = loss_direct
-            loss_align = loss_diff
-
-            cell_loss = (   
-                0.7 * loss_diff +    
-                0.3 * loss_direct 
-                # 0.1 * loss_reconst      
-            )
-
-            pred_outputs = direct_pred
+            cell_loss = criterions['lambda_main']*loss_pred + criterions['lambda_rec']*loss_reconst + criterions['lambda_align']*loss_align
 
         else:
             raise NotImplementedError
@@ -228,15 +216,6 @@ def test_eval(model, test_loader, criterion=None, device='cuda'):
 
         elif model.__class__.__name__ in ["DenseNet"]:
             pred_outputs = model(x=x)
-        elif model.__class__.__name__ in ["CUCA_DiffReg"]:
-            proj_embed, y_diff = model(x, sample=True, sample_steps=200)
-            direct = model.direct_regressor(proj_embed)
-            # alpha = 0.7  
-            # y_final = alpha * y_diff + (1 - alpha) * direct
-            # y_final = torch.clamp(y_final, 0.0, None)
-            # y_final = y_diff
-            pred_outputs = direct
-
 
         else:
             pred_outputs = model(x=x, edge_index=edge_index)
@@ -282,7 +261,7 @@ def test_eval(model, test_loader, criterion=None, device='cuda'):
 
 def main(cur_split, loaders, exp_res_dir=None, device="cuda", **param_kwargs):
     # pre-extracted features
-    fm_list = ["hoptimus0", "gigapath", "virchow2", "virchow", "uni_v1", "phikon", "plip", "conch_v1", "resnet50"]
+    fm_list = ["hoptimus0", "gigapath", "virchow2", "virchow", "uni_v1", "phikon","phikon2","plip", "conch_v1", "resnet50"]
     if param_kwargs['backbone'] in fm_list and param_kwargs['pre_extracted']:
         embed_path = os.path.join(os.path.dirname(exp_res_dir), 'data_embeds')
         os.makedirs(embed_path, exist_ok=True)
@@ -436,11 +415,11 @@ if __name__ == "__main__":
                     directed=False, input_nodes=None,
                     shuffle=split_type=="train", num_workers=num_workers,                )
 
-            elif config["HyperParams"]["architecture"] in ["FMMLP", "LinearProbing", "MLP", "CUCA", "CUCAMLP", "ST-Net", "CUCA_DiffReg"]:
+            elif config["HyperParams"]["architecture"] in ["FMMLP", "LinearProbing", "MLP", "CUCA", "CUCAMLP", "ST-Net", "DeMM"]:
                 split_dataset = ImgCellGeneDataset(split_file_name=os.path.join(config["CKPTS"]["split_data_root"], f"{split_type}_{spec_name}_{cur_split}.txt"),
                                                    data_root=config["CKPTS"]["data_root"])
                 split_loader = torch.utils.data.DataLoader(split_dataset, shuffle=split_type=="train", 
-                                                           drop_last=config["HyperParams"]["architecture"] in ["FMMLP", "CUCA", "CUCA_DiffReg"], 
+                                                           drop_last=config["HyperParams"]["architecture"] in ["FMMLP", "CUCA", "DeMM"], 
                                                            batch_size=subgraph_bs, num_workers=num_workers)
             
             elif config["HyperParams"]["architecture"] in ["THItoGene", "HisToGene", "Hist2ST"]:

@@ -33,7 +33,7 @@ class InferenceEncoder(torch.nn.Module):
 
         if encoder_name in ["uni_v1", "virchow", "virchow2", "hoptimus0", "gigapath"]:
             reg_input_dim = self.encoder.head_hidden_size 
-        elif encoder_name in ["phikon", "plip"]:
+        elif encoder_name in ["phikon","phikon2", "plip"]:
             reg_input_dim = self.encoder.config.hidden_size
         elif encoder_name in ["conch_v1", ]:
             reg_input_dim = self.encoder.embed_dim
@@ -95,11 +95,11 @@ class PhikonInferenceEncoder(InferenceEncoder):
         return out
     
 
-class PhikonInferenceEncoderV2(InferenceEncoder):
+class PhikonInferenceEncoder2(InferenceEncoder):
     def _build(self, weights_path):
-        from transformers import ViTModel
+        from transformers import  Dinov2Model
         
-        model = ViTModel.from_pretrained(weights_path, add_pooling_layer=False)
+        model =  Dinov2Model.from_pretrained(weights_path)
         mean, std = get_constants('imagenet')
         eval_transform = get_eval_transforms(mean, std)
         precision = torch.float32
@@ -340,7 +340,7 @@ def inf_encoder_factory(enc_name):
     elif enc_name == 'phikon':
         return PhikonInferenceEncoder
     elif enc_name == 'phikon2':
-        return PhikonInferenceEncoderV2
+        return PhikonInferenceEncoder2
     elif enc_name == 'plip':
         return PlipInferenceEncoder
     elif enc_name == 'gigapath':

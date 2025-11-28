@@ -87,9 +87,11 @@ class CUCA(nn.Module):
         self.embed_type = embed_type
 
         weights_path = os.path.join("model_weights_pretrained", backbone)
+        self.backbone_name = backbone
         self.backbone = inf_encoder_factory(backbone)(weights_path)
 
         backbone_out_embed_dim = self.backbone.out_embed_dim
+        print(backbone_out_embed_dim)
 
         self.projector_head = nn.Sequential(
             nn.Linear(backbone_out_embed_dim, hidden_dim),  
@@ -127,9 +129,15 @@ class CUCA(nn.Module):
     def process_backbone(self, **lora_cfg_kwargs):
         if lora_cfg_kwargs['ft_lora']:
             del lora_cfg_kwargs['ft_lora']
-            for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
-                if isinstance(module, torch.nn.Linear) and name.split('.')[1] in lora_cfg_kwargs['only_spec_blocks']:
-                    lora_cfg_kwargs['target_modules'].append(name)
+            if self.backbone_name == 'phikon' or self.backbone_name == 'phikon2':
+                for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
+                    if name.split('.')[0] == 'encoder':
+                        if isinstance(module, torch.nn.Linear) and name.split('.')[2] in lora_cfg_kwargs['only_spec_blocks']:
+                            lora_cfg_kwargs['target_modules'].append(name)
+            else:
+                for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
+                    if isinstance(module, torch.nn.Linear) and name.split('.')[1] in lora_cfg_kwargs['only_spec_blocks']:
+                        lora_cfg_kwargs['target_modules'].append(name)         
             del lora_cfg_kwargs['only_spec_blocks']
 
             lora_config = LoraConfig(**lora_cfg_kwargs)
@@ -156,81 +164,89 @@ class CUCA(nn.Module):
             return reg_pred # no embedding or commonly when inference
 
 
-from models.diffusion_regressor import ImprovedDiffusionRegressor
-from models.diffusion_regressor_easy import DiffusionRegressor
 
-class CUCA_DiffReg(nn.Module):
-    def __init__(self, backbone, num_targets, hidden_dim, proj_dim, dropout=0.25,
-                 batch_norm=False, aux_output=250, embed_type=None, **lora_cfg):
-        super().__init__()
+class DeMM(nn.Module):
+    r"""
+    CUCA model
+    Args:
+        - backbone : str
+            The name of the backbone model
+        - num_cls : int
+            The number of classes
+        - hidden_dim : int
+            The hidden dimension of the projector head
+        - proj_dim : int
+            The projection dimension
+        - dropout : float
+            The dropout rate
+        - batch_norm : bool
+            Whether to use batch normalization
+        - embed_type : str
+            The type of embedding, one of ["geneexp", "genept", "no"]
+        - **LoraCfgParams : dict
+            The parameters for PE
+    """
+    def __init__(self, backbone, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=False, aux_output=250, embed_type=None, **LoraCfgParams):
+        super(DeMM, self).__init__()
+
         self.embed_type = embed_type
+
         weights_path = os.path.join("model_weights_pretrained", backbone)
+        self.backbone_name = backbone
         self.backbone = inf_encoder_factory(backbone)(weights_path)
+
         backbone_out_embed_dim = self.backbone.out_embed_dim
+        print(backbone_out_embed_dim)
 
         self.projector_head = nn.Sequential(
-            nn.Linear(backbone_out_embed_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.GELU(),
+            nn.Linear(backbone_out_embed_dim, hidden_dim),  
+            nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
+            nn.ReLU(),  # 激活函数
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
+            nn.ReLU(),  
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, proj_dim),
-            nn.LayerNorm(proj_dim),
-        )
+            nn.BatchNorm1d(proj_dim) if batch_norm else nn.Identity(),
+            nn.ReLU(),  
+            )
+        
+        self.regression_head = torch.nn.Linear(proj_dim, num_cls)
+        self.process_backbone(**LoraCfgParams)
 
-        self.direct_regressor = nn.Sequential(
-            nn.Linear(proj_dim, num_targets)
-        )
-
-        self.diff_regressor = ImprovedDiffusionRegressor(
-            target_dim=num_targets, 
-            cond_dim=proj_dim,
-            denoiser_hidden=max(512, proj_dim*2), 
-            timesteps=500,  # Increased timesteps for better convergence
-            num_res_blocks=4,
-            dropout=0.1,
-            use_attention=True
-        )
-
-        self.process_backbone(**lora_cfg)
+        if proj_dim == 256:
+            model_size_type = 'big'
+        elif proj_dim == 512:
+            model_size_type = 'huge'
+        elif proj_dim == 1024:
+            model_size_type = 'giant'
+        else:
+            raise NotImplementedError
 
         if self.embed_type == "geneexp":
-            self.snn_branch = SNN(input_dim=aux_output, model_size_omic='big', n_classes=aux_output)
+            self.snn_branch = SNN(input_dim=aux_output, model_size_omic=model_size_type, n_classes=aux_output)
         elif self.embed_type == "genept":
-            self.snn_branch = SNN(input_dim=1536, model_size_omic='big', n_classes=aux_output)
-
-    def forward(self, x, y_target=None, return_embed=False, sample=False, sample_steps=None,**kwargs):
-        # x: image tensor
-        embedding = self.backbone(x)
-        proj_embed = self.projector_head(embedding)  # (B, proj_dim)
-
-        direct_pred = self.direct_regressor(proj_embed)
-
-        if self.training:
-            assert y_target is not None, "y_target required in training mode"
-            out = self.diff_regressor(y_target, proj_embed)
-            y_t = out['y_t']; t = out['t']; noise = out['noise']; eps_pred = out['eps_pred']
-            y0_pred = self.diff_regressor.predict_x0_from_y_t(y_t, t, proj_embed)
-            return {
-                'proj_embed': proj_embed,
-                'direct_pred': direct_pred,
-                'y_t': y_t,
-                't': t,
-                'noise': noise,
-                'eps_pred': eps_pred,
-                'y0_pred': y0_pred
-            }
+            self.snn_branch = SNN(input_dim=1536, model_size_omic=model_size_type, n_classes=aux_output) # genept embedding dims 1536
         else:
-            if sample:
-                y_sample = self.diff_regressor.sample_from_condition(proj_embed, num_steps=sample_steps)
-                return proj_embed, y_sample
-            else:
-                return proj_embed, direct_pred
+            pass
 
     def process_backbone(self, **lora_cfg_kwargs):
         if lora_cfg_kwargs['ft_lora']:
             del lora_cfg_kwargs['ft_lora']
-            for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
-                if isinstance(module, torch.nn.Linear) and name.split('.')[1] in lora_cfg_kwargs['only_spec_blocks']:
-                    lora_cfg_kwargs['target_modules'].append(name)
+
+            if self.backbone_name == "phikon" or self.backbone_name == "phikon2":
+                
+                for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
+
+                    if name.split('.')[0] == 'encoder':
+                        if isinstance(module, torch.nn.Linear) and name.split('.')[2] in lora_cfg_kwargs['only_spec_blocks']:
+                            lora_cfg_kwargs['target_modules'].append(name)
+            else:
+                for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
+                    if isinstance(module, torch.nn.Linear) and name.split('.')[1] in lora_cfg_kwargs['only_spec_blocks']:
+                        lora_cfg_kwargs['target_modules'].append(name)         
+            
             del lora_cfg_kwargs['only_spec_blocks']
 
             lora_config = LoraConfig(**lora_cfg_kwargs)
@@ -239,5 +255,20 @@ class CUCA_DiffReg(nn.Module):
             for name, param in self.backbone.encoder.named_parameters():
                 param.requires_grad = False
 
-if __name__ == "__main__":
-    pass
+    def forward(self, x, **kwargs):
+        embedding = self.backbone(x)
+        proj_embed = self.projector_head(embedding)
+        reg_pred = self.regression_head(proj_embed)
+        
+        if self.embed_type in ["geneexp", "genept"]: # gene expression embedding or genePT embedding modes
+            if 'gene_exp' in kwargs and 'gene_embed' in kwargs:
+                batch_embedding = torch.matmul(kwargs['gene_exp'], kwargs['gene_embed']) if kwargs['gene_embed'] is not None else kwargs['gene_exp']
+
+                molecu_embed, reconstr_pred = self.snn_branch(batch_embedding)
+                return proj_embed, reg_pred, molecu_embed, reconstr_pred
+        
+        if 'return_embed' in kwargs and kwargs['return_embed']:
+            return proj_embed, reg_pred
+        else:
+            return reg_pred # no embedding or commonly when inference
+
