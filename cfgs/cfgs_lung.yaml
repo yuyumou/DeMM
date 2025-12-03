@@ -1,9 +1,9 @@
-CKPTS: # CUDA_VISIBLE_DEVICES=2 python main.py -c cfgs/cfgs_lung.yaml 
-  exp_code:         DeMM_virchow2_ls2_rk8                           # experiment code
+CKPTS: # CUDA_VISIBLE_DEVICES=7 python main.py -c cfgs/cfgs_lung.yaml 
+  exp_code:         DeMM_virchow2_ls2_rk8_withoutDes                           # experiment code
   data_root:        example_data/humanlung_cell2location      # data directory containing the raw data for each task
   split_data_root:  cross_val_splits/humanlung_cell2location  # directory containing the split files for each dataset
   split_ids:        ["A37", "A42", "A48", "A50"]              # split ids used for training
-  results_dir:      results                                   # directory where results will be dumped
+  results_dir:      ablation                                   # directory where results will be dumped
   independent_root:                                           # directory containing the independent test data
   independent_list:                                           # list of independent test sets
 
@@ -12,7 +12,7 @@ HyperParams:
   batch_size: 128           # input batch size for training (default: 128)
   num_workers: 16           # data loader workers (default: 16)
   lr_rate: 0.002            # learning rate (default: 0.002)
-  optim_fn: adam            # optimizer [adam, sgd, rmsprop, adadelta, adagrad, adamw]
+  optim_fn: adam           # optimizer [adam, sgd, rmsprop, adadelta, adagrad, adamW]
   weight_reg: 0.0001        # weight decay (default: 1e-4)
   scheduler_fn: OneCycleLR  # optimizer scheduler [CosineAnnealingLR CyclicLR LinearLR OneCycleLR StepLR, or none]
 

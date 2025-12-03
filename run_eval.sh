@@ -1,10 +1,13 @@
 #sleep 2h && echo "ready to run evaluation"
 res_path="results"
-device=3
+device=2
 
 
 all_exp_codes=(
-    "ALignClip_hopstimus_ls2_rk16"
+    "DeMM_phikon_ls2_rk16"
+    "DeMM_phikon2_ls2_rk16"
+    "DeMM_virchow2_ls2_rk8"
+
 
 # comparasion methods
 # "CUCA_virchow2_BN_RMSE_a0.2b0.7_ep100_bs128_lr0.002_ext0" # only stnet
@@ -63,13 +66,13 @@ for i in "${!all_exp_codes[@]}"; do
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/humanlung_cell2location/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/humanlung_cell2location/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/humanlung_cell2location/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/her2st/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/her2st/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/her2st/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/her2st/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/her2st/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/her2st/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/her2st/${exp_code}
-    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/stnet/${exp_code}
-    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/stnet/${exp_code}
-    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/stnet/${exp_code}
+    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/stnet/${exp_code}
+    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/stnet/${exp_code}
+    CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/stnet/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/stnet/${exp_code}
     echo "done ${exp_code}"
 done
