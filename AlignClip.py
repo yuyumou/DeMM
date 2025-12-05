@@ -42,7 +42,10 @@ class AlignCLIPSemanticLoss(nn.Module):
         )
 
         # total loss (Eq. 13)
-        total_loss = self.alpha * loss_crsep + self.beta * loss_imsep
+        # total_loss = self.alpha * loss_crsep + self.beta * loss_imsep
+
+        # ablation study
+        total_loss =  loss_imsep 
 
         return total_loss, {
             "loss_crsep": loss_crsep.item(),

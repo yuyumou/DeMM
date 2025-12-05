@@ -7,6 +7,7 @@ example_data
 model_weights_*
 comparison_methods
 results*
+ablation*
 
 tutorial_*
 GenePT_*

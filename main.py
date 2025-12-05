@@ -142,8 +142,8 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
                 img_embed = torch.nn.functional.log_softmax(img_embed, dim=1)
                 molecu_embed = torch.nn.functional.log_softmax(molecu_embed, dim=1)
 
-            # loss_align, _ = loss_align_fn(img_embed, molecu_embed)
-            loss_align = torch.tensor(0.0, device=device)
+            loss_align, _ = loss_align_fn(img_embed, molecu_embed)
+            # loss_align = torch.tensor(0.0, device=device)
 
             cell_loss = criterions['lambda_main']*loss_pred + criterions['lambda_rec']*loss_reconst + criterions['lambda_align']*loss_align
 
