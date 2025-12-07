@@ -1,5 +1,5 @@
 CKPTS: # CUDA_VISIBLE_DEVICES=0 python main.py -c cfgs/cfgs_lung.yaml 
-  exp_code:         DeMM_virchow2_ls2_rk8_withoutDesOnlysep                           # experiment code
+  exp_code:         DeMM_virchow2_ls2_rk8                           # experiment code
   data_root:        example_data/humanlung_cell2location      # data directory containing the raw data for each task
   split_data_root:  cross_val_splits/humanlung_cell2location  # directory containing the split files for each dataset
   split_ids:        ["A37", "A42", "A48", "A50"]              # split ids used for training
@@ -19,9 +19,9 @@ HyperParams:
   loss_main:  RMSE          # balanceMSE # ['RMSE', 'MSE', 'CE', 'L1', 'Pearson'] ' loss function (default: RMSE)'
   loss_rec:   RMSE          # balanceMSE # ['RMSE', 'MSE', 'CE', 'L1', 'Pearson'] ' loss function (default: RMSE)'
   loss_align: RMSE          # balanceMSE # ['RMSE', 'MSE', 'CE', 'L1', InfoNCE] ' loss function (default: RMSE)'
-  lambda_main:  0.3         # lambda weight for main pred loss (default: 0.3)
-  lambda_rec:   0.6         # lambda weight for reconstruction loss (default: 0.6)
-  lambda_align: 0.1         # lambda weight for cross-modal alignment loss (default: 0.1)
+  lambda_main:  0.4         # lambda weight for main pred loss (default: 0.3)
+  lambda_rec:   0.3         # lambda weight for reconstruction loss (default: 0.6)
+  lambda_align: 0.3         # lambda weight for cross-modal alignment loss (default: 0.1)
 
   pre_extracted: False      # use pre-extracted features or not (default: False)
   architecture: DeMM        # DeMM CUCA, CUCAMLP, hist2cell, FMMLP, MLP

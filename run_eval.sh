@@ -4,7 +4,8 @@ device=6
 
 
 all_exp_codes=(
-    "DeMM_virchow2_ls2_rk16_adamW"
+    "DeMM_virchow2_ls2_rk8_42"
+    "DeMM_virchow2_ls2_rk16_42"
 
 # comparasion methods
 # "CUCA_virchow2_BN_RMSE_a0.2b0.7_ep100_bs128_lr0.002_ext0" # only stnet
