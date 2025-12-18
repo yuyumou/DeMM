@@ -5,9 +5,14 @@ import torch.nn.functional as F
 class AlignCLIPSemanticLoss(nn.Module):
     def __init__(self, alpha=1.0, beta=0.5, temperature=0.07):
         super().__init__()
-        self.alpha = alpha
-        self.beta = beta
+        # self.alpha = alpha
+        # self.beta = beta
         self.temperature = temperature
+        init_logit = torch.logit(
+            torch.tensor(0.5, dtype=torch.float32)
+        )
+
+        self.logit_alpha = nn.Parameter(init_logit)
 
     def forward(self, img_embeds, mol_embeds):
         # normalize
@@ -41,8 +46,13 @@ class AlignCLIPSemanticLoss(nn.Module):
             F.cross_entropy(logits_text_img, labels)
         )
 
+        alpha = torch.sigmoid(self.logit_alpha)
+        beta  = 1.0 - alpha
+
+        total_loss = alpha * loss_crsep + beta * loss_imsep
+
         # total loss (Eq. 13)
-        total_loss = self.alpha * loss_crsep + self.beta * loss_imsep
+        # total_loss = self.alpha * loss_crsep + self.beta * loss_imsep
 
         # ablation study
         # total_loss =  loss_imsep 

@@ -1,9 +1,9 @@
-CKPTS: #  CUDA_VISIBLE_DEVICES=1 python main.py -c cfgs/cfgs_stnet.yaml
-  exp_code:         DeMM_virchow2_ls2_rk16_withoutDesOnlysep                # experiment code
+CKPTS: #  CUDA_VISIBLE_DEVICES=2 python main.py -c cfgs/cfgs_stnet.yaml
+  exp_code:         DeMM_virchow2_ls2_rk16                # experiment code
   data_root:        example_data/stnet            # data directory containing the raw data for each task
   split_data_root:  cross_val_splits/stnet        # directory containing the split files for each dataset
   split_ids:        [0, 1, 2, 3]                  # split ids used for training
-  results_dir:      ablation                       # directory where results will be dumped
+  results_dir:      results                       # directory where results will be dumped
   independent_root:                               # directory containing the independent test data
   independent_list:                               # list of independent test sets
 

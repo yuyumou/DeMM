@@ -1,104 +1,63 @@
-
-import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from peft import PeftModel, get_peft_model, LoraConfig
-from models.FoundationModels import inf_encoder_factory
-from models.genomic_snn import SNN
+class AlignCLIPSemanticLoss(nn.Module):
+    def __init__(self, alpha=1.0, beta=0.5, temperature=0.07):
+        super().__init__()
+        # self.alpha = alpha
+        # self.beta = beta
+        self.temperature = temperature
+        init_logit = torch.logit(
+            torch.tensor(0.5, dtype=torch.float32)
+        )
 
+        self.logit_alpha = nn.Parameter(init_logit)
 
-class AlignCLip(nn.Module):
-    r"""
-    CUCA model
-    Args:
-        - backbone : str
-            The name of the backbone model
-        - num_cls : int
-            The number of classes
-        - hidden_dim : int
-            The hidden dimension of the projector head
-        - proj_dim : int
-            The projection dimension
-        - dropout : float
-            The dropout rate
-        - batch_norm : bool
-            Whether to use batch normalization
-        - embed_type : str
-            The type of embedding, one of ["geneexp", "genept", "no"]
-        - **LoraCfgParams : dict
-            The parameters for PE
-    """
-    def __init__(self, backbone, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=False, aux_output=250, embed_type=None, **LoraCfgParams):
-        super(CUCA, self).__init__()
+    def forward(self, img_embeds, mol_embeds):
+        # normalize
+        img_embeds = F.normalize(img_embeds, dim=-1)
+        mol_embeds = F.normalize(mol_embeds, dim=-1)
 
-        self.embed_type = embed_type
+        # similarity matrices
+        sim_i_t = torch.matmul(img_embeds, mol_embeds.t())   # cross-modal
+        sim_i_i = torch.matmul(img_embeds, img_embeds.t())   # image intra-modal
+        sim_t_t = torch.matmul(mol_embeds, mol_embeds.t())   # molecule intra-modal
 
-        weights_path = os.path.join("model_weights_pretrained", backbone)
-        self.backbone = inf_encoder_factory(backbone)(weights_path)
+        # semantic distance (D_y = 1 - S*S^T)
+        D_y = 1 - sim_t_t
 
-        backbone_out_embed_dim = self.backbone.out_embed_dim
+        # apply semantic-guided separation (Eq. 11)
+        logits_vsep = sim_i_i * D_y + torch.eye(sim_i_i.shape[0], device=img_embeds.device)
+        logits_vsep = logits_vsep / self.temperature
 
-        self.projector_head = nn.Sequential(
-            nn.Linear(backbone_out_embed_dim, hidden_dim),  
-            nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
-            nn.ReLU(),  # 激活函数
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
-            nn.ReLU(),  
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, proj_dim),
-            nn.BatchNorm1d(proj_dim) if batch_norm else nn.Identity(),
-            nn.ReLU(),  
-            )
-        
-        self.regression_head = torch.nn.Linear(proj_dim, num_cls)
-        self.process_backbone(**LoraCfgParams)
+        # cross-modality logits (Eq. 12)
+        logits_img_text = sim_i_t / self.temperature
+        logits_text_img = sim_i_t.t() / self.temperature
 
-        if proj_dim == 256:
-            model_size_type = 'big'
-        elif proj_dim == 512:
-            model_size_type = 'huge'
-        elif proj_dim == 1024:
-            model_size_type = 'giant'
-        else:
-            raise NotImplementedError
+        labels = torch.arange(img_embeds.size(0), device=img_embeds.device)
 
-        if self.embed_type == "geneexp":
-            self.snn_branch = SNN(input_dim=aux_output, model_size_omic=model_size_type, n_classes=aux_output)
-        elif self.embed_type == "genept":
-            self.snn_branch = SNN(input_dim=1536, model_size_omic=model_size_type, n_classes=aux_output) # genept embedding dims 1536
-        else:
-            pass
+        # IMSep loss (semantic-guided intra-modal)
+        loss_imsep = F.cross_entropy(logits_vsep, labels)
 
-    def process_backbone(self, **lora_cfg_kwargs):
-        if lora_cfg_kwargs['ft_lora']:
-            del lora_cfg_kwargs['ft_lora']
-            for name, module in self.backbone.encoder.named_modules(): # get the target modules in encoder
-                if isinstance(module, torch.nn.Linear) and name.split('.')[1] in lora_cfg_kwargs['only_spec_blocks']:
-                    lora_cfg_kwargs['target_modules'].append(name)
-            del lora_cfg_kwargs['only_spec_blocks']
+        # CRSep loss (cross-modal alignment)
+        loss_crsep = 0.5 * (
+            F.cross_entropy(logits_img_text, labels) +
+            F.cross_entropy(logits_text_img, labels)
+        )
 
-            lora_config = LoraConfig(**lora_cfg_kwargs)
-            self.backbone.encoder = get_peft_model(self.backbone.encoder, lora_config) 
-        else: # no lora, fixed
-            for name, param in self.backbone.encoder.named_parameters():
-                param.requires_grad = False
+        alpha = torch.sigmoid(self.logit_alpha)
+        beta  = 1.0 - alpha
 
-    def forward(self, x, **kwargs):
-        embedding = self.backbone(x)
-        proj_embed = self.projector_head(embedding)
-        reg_pred = self.regression_head(proj_embed)
-        
-        if self.embed_type in ["geneexp", "genept"]: # gene expression embedding or genePT embedding modes
-            if 'gene_exp' in kwargs and 'gene_embed' in kwargs:
-                batch_embedding = torch.matmul(kwargs['gene_exp'], kwargs['gene_embed']) if kwargs['gene_embed'] is not None else kwargs['gene_exp']
+        total_loss = alpha * loss_crsep + beta * loss_imsep
 
-                molecu_embed, reconstr_pred = self.snn_branch(batch_embedding)
-                return proj_embed, reg_pred, molecu_embed, reconstr_pred
-        
-        if 'return_embed' in kwargs and kwargs['return_embed']:
-            return proj_embed, reg_pred
-        else:
-            return reg_pred # no embedding or commonly when inference
+        # total loss (Eq. 13)
+        # total_loss = self.alpha * loss_crsep + self.beta * loss_imsep
+
+        # ablation study
+        # total_loss =  loss_imsep 
+
+        return total_loss, {
+            "loss_crsep": loss_crsep.item(),
+            "loss_imsep": loss_imsep.item()
+        }

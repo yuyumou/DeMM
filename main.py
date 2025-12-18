@@ -118,7 +118,6 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
 
         elif model.__class__.__name__ in ["CUCA", "CUCAMLP"]:
             img_embed, pred_outputs, molecu_embed, rec_outputs = model(x=x, gene_exp=gene_exp_label, gene_embed=None)
-            loss_align_fn = AlignCLIPSemanticLoss(alpha=1.0, beta=0.5, temperature=0.07)
             loss_pred = criterions['criterion_main'](pred_outputs, cell_label)
             loss_reconst = criterions['criterion_rec'](rec_outputs, gene_exp_label)
 
@@ -133,8 +132,8 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
             cell_loss = criterions['lambda_main']*loss_pred + criterions['lambda_rec']*loss_reconst + criterions['lambda_align']*loss_align
 
         elif model.__class__.__name__ in ["DeMM"]:
-            img_embed, pred_outputs, molecu_embed, rec_outputs = model(x=x, gene_exp=gene_exp_label, gene_embed=None)
-            loss_align_fn = AlignCLIPSemanticLoss(alpha=1.0, beta=0.5, temperature=0.07)
+            img_embed, pred_outputs, molecu_embed, rec_outputs,loss_align = model(x=x, gene_exp=gene_exp_label, gene_embed=None)
+            
             loss_pred = criterions['criterion_main'](pred_outputs, cell_label)
             loss_reconst = criterions['criterion_rec'](rec_outputs, gene_exp_label)
 
@@ -142,7 +141,7 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
                 img_embed = torch.nn.functional.log_softmax(img_embed, dim=1)
                 molecu_embed = torch.nn.functional.log_softmax(molecu_embed, dim=1)
 
-            loss_align, _ = loss_align_fn(img_embed, molecu_embed)
+            # loss_align, _ = loss_align_fn(img_embed, molecu_embed)
             # loss_align = torch.tensor(0.0, device=device)
 
             cell_loss = criterions['lambda_main']*loss_pred + criterions['lambda_rec']*loss_reconst + criterions['lambda_align']*loss_align

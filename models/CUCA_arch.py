@@ -60,6 +60,8 @@ class CUCAMLP(nn.Module):
 
 
 
+
+
 class CUCA(nn.Module):
     r"""
     CUCA model
@@ -165,6 +167,9 @@ class CUCA(nn.Module):
 
 
 
+from AlignClip import AlignCLIPSemanticLoss
+
+
 class DeMM(nn.Module):
     r"""
     CUCA model
@@ -188,6 +193,11 @@ class DeMM(nn.Module):
     """
     def __init__(self, backbone, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=False, aux_output=250, embed_type=None, **LoraCfgParams):
         super(DeMM, self).__init__()
+
+        self.align_loss_fn = AlignCLIPSemanticLoss(
+            temperature=0.07
+        )
+
 
         self.embed_type = embed_type
 
@@ -265,7 +275,11 @@ class DeMM(nn.Module):
                 batch_embedding = torch.matmul(kwargs['gene_exp'], kwargs['gene_embed']) if kwargs['gene_embed'] is not None else kwargs['gene_exp']
 
                 molecu_embed, reconstr_pred = self.snn_branch(batch_embedding)
-                return proj_embed, reg_pred, molecu_embed, reconstr_pred
+                loss_align, loss_info = self.align_loss_fn(
+                    proj_embed, molecu_embed
+                )
+
+                return proj_embed, reg_pred, molecu_embed, reconstr_pred,loss_align
         
         if 'return_embed' in kwargs and kwargs['return_embed']:
             return proj_embed, reg_pred
