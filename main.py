@@ -22,6 +22,13 @@ torch_geometric.typing.WITH_PYG_LIB = False
 
 
 
+import psutil, os
+
+def log_mem(tag):
+    p = psutil.Process(os.getpid())
+    logger.info(f"[{tag}] RSS = {p.memory_info().rss / 1024**3:.2f} GB")
+
+
 
 cur_main_dir = os.path.dirname(os.path.abspath(__file__)) # current file path to sys.path
 print(cur_main_dir)
@@ -329,9 +336,11 @@ def main(cur_split, loaders, exp_res_dir=None, device="cuda", **param_kwargs):
     since = time.time()
     num_epochs = param_kwargs['max_epochs']
     for epoch in range(num_epochs):
+        log_mem("before train")
         train_cell_abundance_all_pearson_average, train_loss = train_one_epoch(epoch, num_epochs, 
                                                                                model, loaders['train'], 
                                                                                optimizer, criterions, writer=writer, device=device)        
+        log_mem("after train")
         scheduler.step()
         if writer is not None:
             writer.add_scalar('train/lr', scheduler.optimizer.param_groups[0]['lr'], epoch)
@@ -343,8 +352,10 @@ def main(cur_split, loaders, exp_res_dir=None, device="cuda", **param_kwargs):
         logger.info(f'Epoch: {(epoch + 1)} \tTraining Cell abundance pearson all average: {train_cell_abundance_all_pearson_average:.6f}')
 
         val_loader = loaders['val'] if 'val' in loaders.keys() else loaders['test'] # 'test' only for humanlung_cell2location
+        log_mem("before val")
         dict_cell_type_pcc, val_loss = test_eval(model, test_loader=val_loader, criterion=criterions['criterion_main'], device=device)
         val_cell_abundance_all_pearson_average = pd.DataFrame(dict_cell_type_pcc).mean(1).pcc
+        log_mem("after val")
 
         if writer is not None:
             writer.add_scalar('val/loss', val_loss, epoch)
@@ -367,7 +378,10 @@ def main(cur_split, loaders, exp_res_dir=None, device="cuda", **param_kwargs):
     model.to(device)
     model.eval()
 
+    log_mem("before val")
     dict_cell_type_pcc, _ = test_eval(model, test_loader=loaders['test'], criterion=None, device=device)
+    log_mem("after val")
+
     logger.info(f"Test Cell abundance pearson res. for fold{cur_split}\n: {pd.DataFrame(dict_cell_type_pcc)}")
 
     test_cell_abundance_all_pearson_average = pd.DataFrame(dict_cell_type_pcc).mean(1).pcc

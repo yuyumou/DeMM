@@ -1,6 +1,6 @@
 #sleep 2h && echo "ready to run evaluation"
 res_path="results"
-device=1
+device=0
 
 
 all_exp_codes=(
@@ -63,13 +63,13 @@ for i in "${!all_exp_codes[@]}"; do
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/humanlung_cell2location/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/humanlung_cell2location/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/humanlung_cell2location/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/her2st/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/her2st/${exp_code}
-    CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/her2st/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/her2st/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/her2st/${exp_code}
+    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/her2st/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/her2st/${exp_code}
-    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/stnet/${exp_code}
-    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/stnet/${exp_code}
-    # CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/stnet/${exp_code}
+    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_spearmanr.py -ep ${res_path}/stnet/${exp_code}
+    CUDA_VISIBLE_DEVICES=${device} python test_evaluation_JSD.py -ep ${res_path}/stnet/${exp_code}
+    CUDA_VISIBLE_DEVICES=${device} python test_evaluation.py -ep ${res_path}/stnet/${exp_code}
     # CUDA_VISIBLE_DEVICES=${device} python test_evaluation_mutualinfo.py -ep ${res_path}/stnet/${exp_code}
     echo "done ${exp_code}"
 done

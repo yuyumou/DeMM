@@ -46,7 +46,7 @@ class AlignCLIPSemanticLoss(nn.Module):
             F.cross_entropy(logits_text_img, labels)
         )
 
-        alpha = torch.sigmoid(self.logit_alpha)
+        # alpha = torch.sigmoid(self.logit_alpha)
         beta  = 1.0 - alpha
 
         total_loss = alpha * loss_crsep + beta * loss_imsep
