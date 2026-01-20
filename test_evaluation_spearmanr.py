@@ -215,8 +215,8 @@ if __name__ == "__main__":
             test_dataset = THItoGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["data_root"])
             test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False, batch_size=1, num_workers=num_workers)
 
-        elif config["HyperParams"]["architecture"] in ["LinearProbing", "FMMLP", "MLP", "CUCA", "CUCAMLP", "ST-Net", "DeMM"]:
-            test_dataset = ImgCellGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["data_root"])      
+        elif config["HyperParams"]["architecture"] in ["LinearProbing", "FMMLP", "MLP", "CUCA", "CUCAMLP", "ST-Net", "DeMM", "MoE_DeMM"]:
+            test_dataset = ImgCellGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["data_root"])
             test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False, batch_size=subgraph_bs, num_workers=num_workers)
 
         else:
@@ -280,8 +280,8 @@ if __name__ == "__main__":
                 split_dataset = THItoGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["independent_root"])
                 split_loader = torch.utils.data.DataLoader(split_dataset, shuffle=False, batch_size=1, num_workers=num_workers)
 
-            elif config["HyperParams"]["architecture"] in ["LinearProbing", "MLP", "CUCAMLP", "FMMLP", "CUCA", "ST-Net", "DeMM"]:
-                test_dataset = ImgCellGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["independent_root"])      
+            elif config["HyperParams"]["architecture"] in ["LinearProbing", "MLP", "CUCAMLP", "FMMLP", "CUCA", "ST-Net", "DeMM", "MoE_DeMM"]:
+                test_dataset = ImgCellGeneDataset(split_file_name=split_file_name, data_root=config["CKPTS"]["independent_root"])
                 test_loader = torch.utils.data.DataLoader(test_dataset, shuffle=False, batch_size=subgraph_bs, num_workers=num_workers)
 
             else:

@@ -138,7 +138,7 @@ def train_one_epoch(epoch, num_epochs, model, train_loader, optimizer, criterion
             # loss_align = torch.norm(img_embed - molecu_embed, p=2, dim=1)
             cell_loss = criterions['lambda_main']*loss_pred + criterions['lambda_rec']*loss_reconst + criterions['lambda_align']*loss_align
 
-        elif model.__class__.__name__ in ["DeMM"]:
+        elif model.__class__.__name__ in ["DeMM", "MoE_DeMM"]:
             img_embed, pred_outputs, molecu_embed, rec_outputs,loss_align = model(x=x, gene_exp=gene_exp_label, gene_embed=None)
             
             loss_pred = criterions['criterion_main'](pred_outputs, cell_label)
@@ -429,11 +429,11 @@ if __name__ == "__main__":
                     directed=False, input_nodes=None,
                     shuffle=split_type=="train", num_workers=num_workers,                )
 
-            elif config["HyperParams"]["architecture"] in ["FMMLP", "LinearProbing", "MLP", "CUCA", "CUCAMLP", "ST-Net", "DeMM"]:
+            elif config["HyperParams"]["architecture"] in ["FMMLP", "LinearProbing", "MLP", "CUCA", "CUCAMLP", "ST-Net", "DeMM", "MoE_DeMM"]:
                 split_dataset = ImgCellGeneDataset(split_file_name=os.path.join(config["CKPTS"]["split_data_root"], f"{split_type}_{spec_name}_{cur_split}.txt"),
                                                    data_root=config["CKPTS"]["data_root"])
-                split_loader = torch.utils.data.DataLoader(split_dataset, shuffle=split_type=="train", 
-                                                           drop_last=config["HyperParams"]["architecture"] in ["FMMLP", "CUCA", "DeMM"], 
+                split_loader = torch.utils.data.DataLoader(split_dataset, shuffle=split_type=="train",
+                                                           drop_last=config["HyperParams"]["architecture"] in ["FMMLP", "CUCA", "DeMM", "MoE_DeMM"],
                                                            batch_size=subgraph_bs, num_workers=num_workers)
             
             elif config["HyperParams"]["architecture"] in ["THItoGene", "HisToGene", "Hist2ST"]:

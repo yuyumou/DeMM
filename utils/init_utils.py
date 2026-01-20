@@ -8,7 +8,7 @@ from models.THItoGene_arch.vis_model import THItoGene
 from models.HIST2ST_arch import Hist2ST
 from models.HisToGene_arch import HisToGene
 from models.FMMLP_arch import FMMLP, MLP, LinearProbing
-from models.CUCA_arch import CUCA, CUCAMLP, DeMM
+from models.CUCA_arch import CUCA, CUCAMLP, DeMM, MoE_DeMM
 
 from utils.loss_utils import RMSELoss, PearsonLoss, InfoNCE
 
@@ -120,6 +120,9 @@ def _init_model(architecture_name,
         model = CUCAMLP(backbone_name, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=True, aux_output=250, embed_type="geneexp")
     elif architecture_name == "DeMM":
         model = DeMM(backbone_name, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=True, aux_output=250, embed_type="geneexp",**lora_cfg_kwargs)
+    elif architecture_name == "MoE_DeMM":
+        num_experts = lora_cfg_kwargs.pop('num_experts', 4) # Extract num_experts if provided, default to 4
+        model = MoE_DeMM(backbone_name, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=True, aux_output=250, embed_type="geneexp", num_experts=num_experts, **lora_cfg_kwargs)
     else:
         raise NotImplementedError
     

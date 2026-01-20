@@ -1,4 +1,3 @@
-
 import os
 import torch
 import torch.nn as nn
@@ -286,3 +285,98 @@ class DeMM(nn.Module):
         else:
             return reg_pred # no embedding or commonly when inference
 
+
+class MoE_DeMM(DeMM):
+    r"""
+    MoE DeMM model with Mixture of Experts for robust prediction
+    Args:
+        - num_experts: int
+            Number of experts to use
+    """
+    def __init__(self, backbone, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=False, aux_output=250, embed_type=None, num_experts=4, **LoraCfgParams):
+        super(MoE_DeMM, self).__init__(backbone, num_cls, hidden_dim, proj_dim, dropout, batch_norm, aux_output, embed_type, **LoraCfgParams)
+        
+        # Override single heads with MoE components
+        self.num_experts = num_experts
+        
+        # We need the input dim for the heads, which is backbone_out_embed_dim
+        # Since it's not stored in DeMM explicitly as a property, we re-access it from backbone
+        backbone_out_embed_dim = self.backbone.out_embed_dim
+        
+        # Define Experts
+        # Each expert mimics the original projector + regression head structure
+        # Re-defining experts to split projector and regressor to allow access to projected embeddings
+        self.expert_projectors = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(backbone_out_embed_dim, hidden_dim),  
+                nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
+                nn.ReLU(),  
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, proj_dim),
+                nn.BatchNorm1d(proj_dim) if batch_norm else nn.Identity(),
+                nn.ReLU(),
+            ) for _ in range(num_experts)
+        ])
+        
+        self.expert_regressors = nn.ModuleList([
+            torch.nn.Linear(proj_dim, num_cls) for _ in range(num_experts)
+        ])
+        
+        # Gating Network
+        # Input: backbone embedding, Output: weights for each expert
+        self.gate = nn.Sequential(
+            nn.Linear(backbone_out_embed_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(256, num_experts),
+            nn.Softmax(dim=1)
+        )
+        
+        # Remove old single heads to save memory
+        del self.projector_head
+        del self.regression_head
+
+    def forward(self, x, **kwargs):
+        embedding = self.backbone(x) # [B, D_backbone]
+        
+        # 1. Gating
+        gate_weights = self.gate(embedding) # [B, num_experts]
+        
+        # 2. Experts Forward
+        # We need to stack outputs to perform weighted sum
+        
+        # [B, num_experts, proj_dim]
+        expert_proj_embeds = torch.stack([proj(embedding) for proj in self.expert_projectors], dim=1)
+        
+        # [B, num_experts, num_cls]
+        expert_preds = torch.stack([reg(proj_embed) for reg, proj_embed in zip(self.expert_regressors, torch.unbind(expert_proj_embeds, dim=1))], dim=1)
+        
+        # 3. Weighted Sum
+        # proj_embed: [B, proj_dim] - Weighted average of projected embeddings
+        proj_embed = torch.einsum('be,bed->bd', gate_weights, expert_proj_embeds)
+        
+        # reg_pred: [B, num_cls] - Weighted average of predictions
+        reg_pred = torch.einsum('be,bec->bc', gate_weights, expert_preds)
+        
+        # 4. DeMM Logic (Alignment)
+        if self.embed_type in ["geneexp", "genept"]:
+            if 'gene_exp' in kwargs and 'gene_embed' in kwargs:
+                batch_embedding = torch.matmul(kwargs['gene_exp'], kwargs['gene_embed']) if kwargs['gene_embed'] is not None else kwargs['gene_exp']
+
+                molecu_embed, reconstr_pred = self.snn_branch(batch_embedding)
+                
+                # Use the weighted proj_embed for alignment
+                loss_align, loss_info = self.align_loss_fn(
+                    proj_embed, molecu_embed
+                )
+                
+                return proj_embed, reg_pred, molecu_embed, reconstr_pred, loss_align
+        
+        if 'return_embed' in kwargs and kwargs['return_embed']:
+            return proj_embed, reg_pred
+        else:
+            return reg_pred
