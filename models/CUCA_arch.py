@@ -286,6 +286,36 @@ class DeMM(nn.Module):
             return reg_pred # no embedding or commonly when inference
 
 
+class NoisyGating(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_experts, dropout=0.1):
+        super(NoisyGating, self).__init__()
+        # Feature extraction layer
+        self.layer1 = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
+        # Gating layer
+        self.w_gate = nn.Linear(hidden_dim, num_experts)
+        # Noise layer
+        self.w_noise = nn.Linear(hidden_dim, num_experts)
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        features = self.layer1(x)
+        clean_logits = self.w_gate(features)
+        
+        if self.training:
+            raw_noise_stddev = self.w_noise(features)
+            noise_stddev = torch.nn.functional.softplus(raw_noise_stddev) + 1e-2
+            noisy_logits = clean_logits + (torch.randn_like(clean_logits) * noise_stddev)
+            logits = noisy_logits
+        else:
+            logits = clean_logits
+            
+        return self.softmax(logits)
+
+
 class MoE_DeMM(DeMM):
     r"""
     MoE DeMM model with Mixture of Experts for robust prediction
@@ -308,13 +338,13 @@ class MoE_DeMM(DeMM):
         # Re-defining experts to split projector and regressor to allow access to projected embeddings
         self.expert_projectors = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(backbone_out_embed_dim, hidden_dim),  
+                nn.Linear(backbone_out_embed_dim, hidden_dim),
                 nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
-                nn.ReLU(),  
+                nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(hidden_dim, proj_dim),
                 nn.BatchNorm1d(proj_dim) if batch_norm else nn.Identity(),
@@ -326,15 +356,9 @@ class MoE_DeMM(DeMM):
             torch.nn.Linear(proj_dim, num_cls) for _ in range(num_experts)
         ])
         
-        # Gating Network
+        # Gating Network with Noisy Gating
         # Input: backbone embedding, Output: weights for each expert
-        self.gate = nn.Sequential(
-            nn.Linear(backbone_out_embed_dim, 256),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, num_experts),
-            nn.Softmax(dim=1)
-        )
+        self.gate = NoisyGating(input_dim=backbone_out_embed_dim, hidden_dim=256, num_experts=num_experts, dropout=0.1)
         
         # Remove old single heads to save memory
         del self.projector_head
