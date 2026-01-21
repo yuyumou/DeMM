@@ -353,7 +353,13 @@ class MoE_DeMM(DeMM):
         ])
         
         self.expert_regressors = nn.ModuleList([
-            torch.nn.Linear(proj_dim, num_cls) for _ in range(num_experts)
+            nn.Sequential(
+                nn.Linear(proj_dim, proj_dim),
+                nn.BatchNorm1d(proj_dim) if batch_norm else nn.Identity(),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(proj_dim, num_cls)
+            ) for _ in range(num_experts)
         ])
         
         # Gating Network with Noisy Gating
