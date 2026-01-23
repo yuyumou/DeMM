@@ -289,6 +289,7 @@ class DeMM(nn.Module):
 class NoisyGating(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_experts, dropout=0.1):
         super(NoisyGating, self).__init__()
+        self.num_experts = num_experts
         # Feature extraction layer
         self.layer1 = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -312,8 +313,20 @@ class NoisyGating(nn.Module):
             logits = noisy_logits
         else:
             logits = clean_logits
+        
+        soft_gates = self.softmax(logits)
+        
+        # Load Balancing Loss
+        if self.training:
+            # Encouraging uniform distribution of experts across the batch
+            # P_i = mean probability of expert i in the batch
+            mean_gate_weights = torch.mean(soft_gates, dim=0)
+            # Loss = sum(P_i^2) * N. Minimal when P_i = 1/N
+            balance_loss = torch.sum(mean_gate_weights ** 2) * self.num_experts
+        else:
+            balance_loss = torch.tensor(0.0, device=x.device)
             
-        return self.softmax(logits)
+        return soft_gates, balance_loss
 
 
 class MoE_DeMM(DeMM):
@@ -323,11 +336,12 @@ class MoE_DeMM(DeMM):
         - num_experts: int
             Number of experts to use
     """
-    def __init__(self, backbone, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=False, aux_output=250, embed_type=None, num_experts=4, **LoraCfgParams):
+    def __init__(self, backbone, num_cls, hidden_dim, proj_dim, dropout=0.25, batch_norm=False, aux_output=250, embed_type=None, num_experts=4, gate_loss_weight=0.1, **LoraCfgParams):
         super(MoE_DeMM, self).__init__(backbone, num_cls, hidden_dim, proj_dim, dropout, batch_norm, aux_output, embed_type, **LoraCfgParams)
         
         # Override single heads with MoE components
         self.num_experts = num_experts
+        self.gate_loss_weight = gate_loss_weight
         
         # We need the input dim for the heads, which is backbone_out_embed_dim
         # Since it's not stored in DeMM explicitly as a property, we re-access it from backbone
@@ -374,7 +388,7 @@ class MoE_DeMM(DeMM):
         embedding = self.backbone(x) # [B, D_backbone]
         
         # 1. Gating
-        gate_weights = self.gate(embedding) # [B, num_experts]
+        gate_weights, gate_loss = self.gate(embedding) # [B, num_experts], scalar
         
         # 2. Experts Forward
         # We need to stack outputs to perform weighted sum
@@ -404,7 +418,10 @@ class MoE_DeMM(DeMM):
                     proj_embed, molecu_embed
                 )
                 
-                return proj_embed, reg_pred, molecu_embed, reconstr_pred, loss_align
+                # Add gate loss to alignment loss to avoid changing return signature
+                total_aux_loss = loss_align + self.gate_loss_weight * gate_loss
+                
+                return proj_embed, reg_pred, molecu_embed, reconstr_pred, total_aux_loss
         
         if 'return_embed' in kwargs and kwargs['return_embed']:
             return proj_embed, reg_pred
