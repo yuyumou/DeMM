@@ -376,6 +376,30 @@ class MoE_DeMM(DeMM):
             ) for _ in range(num_experts)
         ])
         
+        # Shared Expert (Always Active)
+        # This acts as a "baseline" or "anchor" to ensure stability and capture common features
+        self.shared_projector = nn.Sequential(
+            nn.Linear(backbone_out_embed_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim) if batch_norm else nn.Identity(),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, proj_dim),
+            nn.BatchNorm1d(proj_dim) if batch_norm else nn.Identity(),
+            nn.ReLU(),
+        )
+        
+        self.shared_regressor = nn.Sequential(
+            nn.Linear(proj_dim, proj_dim),
+            nn.BatchNorm1d(proj_dim) if batch_norm else nn.Identity(),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(proj_dim, num_cls)
+        )
+
         # Gating Network with Noisy Gating
         # Input: backbone embedding, Output: weights for each expert
         self.gate = NoisyGating(input_dim=backbone_out_embed_dim, hidden_dim=256, num_experts=num_experts, dropout=0.1)
@@ -387,10 +411,14 @@ class MoE_DeMM(DeMM):
     def forward(self, x, **kwargs):
         embedding = self.backbone(x) # [B, D_backbone]
         
-        # 1. Gating
+        # 1. Shared Expert Forward
+        shared_proj = self.shared_projector(embedding)
+        shared_pred = self.shared_regressor(shared_proj)
+
+        # 2. Gating
         gate_weights, gate_loss = self.gate(embedding) # [B, num_experts], scalar
         
-        # 2. Experts Forward
+        # 3. Experts Forward (Routed Experts)
         # We need to stack outputs to perform weighted sum
         
         # [B, num_experts, proj_dim]
@@ -399,14 +427,18 @@ class MoE_DeMM(DeMM):
         # [B, num_experts, num_cls]
         expert_preds = torch.stack([reg(proj_embed) for reg, proj_embed in zip(self.expert_regressors, torch.unbind(expert_proj_embeds, dim=1))], dim=1)
         
-        # 3. Weighted Sum
-        # proj_embed: [B, proj_dim] - Weighted average of projected embeddings
-        proj_embed = torch.einsum('be,bed->bd', gate_weights, expert_proj_embeds)
+        # 4. Weighted Sum
+        # routed_proj: [B, proj_dim] - Weighted average of projected embeddings
+        routed_proj = torch.einsum('be,bed->bd', gate_weights, expert_proj_embeds)
         
-        # reg_pred: [B, num_cls] - Weighted average of predictions
-        reg_pred = torch.einsum('be,bec->bc', gate_weights, expert_preds)
+        # routed_pred: [B, num_cls] - Weighted average of predictions
+        routed_pred = torch.einsum('be,bec->bc', gate_weights, expert_preds)
         
-        # 4. DeMM Logic (Alignment)
+        # 5. Final Combination (Shared + Routed)
+        proj_embed = shared_proj + routed_proj
+        reg_pred = shared_pred + routed_pred
+
+        # 6. DeMM Logic (Alignment)
         if self.embed_type in ["geneexp", "genept"]:
             if 'gene_exp' in kwargs and 'gene_embed' in kwargs:
                 batch_embedding = torch.matmul(kwargs['gene_exp'], kwargs['gene_embed']) if kwargs['gene_embed'] is not None else kwargs['gene_exp']
